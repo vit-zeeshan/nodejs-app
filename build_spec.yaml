@@ -1,0 +1,53 @@
+version: 0.1
+component: build
+timeoutInSeconds: 6000
+shell: bash
+failImmediatelyOnError: true
+
+env:
+  exportedVariables:
+    - NodeAppVersion
+
+steps:
+  # Step 1: Install Dependencies and Run Tests
+  - type: Command
+    name: "Install Dependencies & Run Tests"
+    timeoutInSeconds: 1000
+    command: |
+      echo "Installing dependencies..."
+      npm install
+      echo "Running tests..."
+      npm test
+
+  # Step 2: Build Docker Image
+  - type: Command
+    name: "Build Docker Image"
+    timeoutInSeconds: 800
+    command: |
+      NodeAppVersion=$(echo ${OCI_BUILD_RUN_ID} | rev | cut -c 1-7)
+      echo "Build Version: $NodeAppVersion"
+      docker build -t nodejs-app:$NodeAppVersion .
+      docker tag nodejs-app:$NodeAppVersion nodejs-app:latest
+
+  # Step 3: Vulnerability Audit
+  - type: VulnerabilityAudit
+    name: "Scan Node.js Dependencies"
+    vulnerabilityAuditName: "NodeJS-Report-${OCI_BUILD_RUN_ID}"
+    vulnerabilityAuditCompartmentId: ocid1.compartment.oc1.iad.restoftheocid
+    knowledgeBaseId: ocid1.knowledgebase.oc1.iad.restoftheocid
+    configuration:
+      buildType: npm
+      packageJsonPath: ./package.json
+      maxPermissibleCvssV2Score: 5.0
+      maxPermissibleCvssV3Score: 5.0
+
+outputArtifacts:
+  # Docker Image
+  - name: nodejs-app-image
+    type: DOCKER_IMAGE
+    location: nodejs-app:latest
+
+  # Kubernetes Deployment Manifest
+  - name: kube-manifest
+    type: BINARY
+    location: deployment/app.yml
